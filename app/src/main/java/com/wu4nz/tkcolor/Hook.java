@@ -3,6 +3,7 @@ package com.wu4nz.tkcolor;
 import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
@@ -74,6 +75,28 @@ public class Hook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             XposedBridge.log("TkColor: " + cls.getSimpleName() + "."
                     + method + " fail: " + t);
+        }
+    }
+
+    // ghi log method và field của một class (để dò Tux icon)
+    private static void dump(String cn, ClassLoader cl) {
+        try {
+            Class<?> c = XposedHelpers.findClass(cn, cl);
+            StringBuilder sb = new StringBuilder("TkColor: tux " + cn + " methods: ");
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                sb.append(m.getName()).append("(");
+                for (Class<?> a : m.getParameterTypes())
+                    sb.append(a.getSimpleName()).append(",");
+                sb.append(") ");
+            }
+            XposedBridge.log(sb.toString());
+            sb = new StringBuilder("TkColor: tux " + cn + " fields: ");
+            for (java.lang.reflect.Field f : c.getDeclaredFields())
+                sb.append(f.getType().getSimpleName()).append(" ")
+                        .append(f.getName()).append(", ");
+            XposedBridge.log(sb.toString());
+        } catch (Throwable t) {
+            XposedBridge.log("TkColor: dump fail " + cn + ": " + t);
         }
     }
 
@@ -199,8 +222,18 @@ public class Hook implements IXposedHookLoadPackage {
             XposedBridge.log("TkColor: heart fail: " + t);
         }
 
-        // 6. DEBUG: xem nút tim là view gì
+        // 6. TypedArray.getColor (màu lấy từ theme attr)
+        try {
+            XposedHelpers.findAndHookMethod(TypedArray.class,
+                    "getColor", int.class, int.class, afterColor);
+        } catch (Throwable t) {
+            XposedBridge.log("TkColor: typedarray fail: " + t);
+        }
+
+        // 7. DEBUG
         if (DEBUG) {
+            dump("com.bytedance.tux.drawable.TuxIconDrawable", lp.classLoader);
+            dump("com.bytedance.tux.icon.TuxIconView", lp.classLoader);
             try {
                 XposedHelpers.findAndHookMethod(View.class, "performClick",
                         new XC_MethodHook() {
@@ -225,16 +258,30 @@ public class Hook implements IXposedHookLoadPackage {
                         } catch (Throwable ignored) { }
                     }
                 });
-                XposedHelpers.findAndHookMethod(ImageView.class,
-                        "setImageDrawable", Drawable.class,
-                        new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam p) {
-                        if (p.args[0] != null)
-                            XposedBridge.log("TkColor: img "
-                                    + p.thisObject.getClass().getName()
-                                    + " drawable="
-                                    + p.args[0].getClass().getName());
+            } catch (Throwable t) {
+                XposedBridge.log("TkColor: debug fail: " + t);
+            }
+        }
+
+        XposedBridge.log("TkColor: hooked " + lp.packageName);
+    }
+                }                     try {
+                            View v = (View) p.thisObject;
+                            String id = "none";
+                            try {
+                                if (v.getId() != -1)
+                                    id = v.getResources()
+                                            .getResourceEntryName(v.getId());
+                            } catch (Throwable ignored) { }
+                            StringBuilder sb = new StringBuilder();
+                            Object o = v;
+                            for (int i = 0; i < 4 && o instanceof View; i++) {
+                                sb.append(o.getClass().getName()).append(" < ");
+                                o = ((View) o).getParent();
+                            }
+                            XposedBridge.log("TkColor: click id=" + id
+                                    + " chain=" + sb);
+                        } catch (Throwable ignored) { }
                     }
                 });
             } catch (Throwable t) {
