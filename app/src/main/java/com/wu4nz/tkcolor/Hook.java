@@ -265,30 +265,4 @@ public class Hook implements IXposedHookLoadPackage {
 
         XposedBridge.log("TkColor: hooked " + lp.packageName);
     }
-                }                     try {
-                            View v = (View) p.thisObject;
-                            String id = "none";
-                            try {
-                                if (v.getId() != -1)
-                                    id = v.getResources()
-                                            .getResourceEntryName(v.getId());
-                            } catch (Throwable ignored) { }
-                            StringBuilder sb = new StringBuilder();
-                            Object o = v;
-                            for (int i = 0; i < 4 && o instanceof View; i++) {
-                                sb.append(o.getClass().getName()).append(" < ");
-                                o = ((View) o).getParent();
-                            }
-                            XposedBridge.log("TkColor: click id=" + id
-                                    + " chain=" + sb);
-                        } catch (Throwable ignored) { }
-                    }
-                });
-            } catch (Throwable t) {
-                XposedBridge.log("TkColor: debug fail: " + t);
-            }
-        }
-
-        XposedBridge.log("TkColor: hooked " + lp.packageName);
-    }
-                            }
+}
