@@ -4,11 +4,13 @@ import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Color;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.ImageView;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -21,6 +23,10 @@ public class Hook implements IXposedHookLoadPackage {
     // 195 = cyan/xanh nước biển sáng, 210 = xanh dương điện,
     // 150 = xanh lá neon, 270 = tím điện, 320 = hồng magenta
     private static final float HUE = 195f;
+
+    // true = ghi log để dò nút tim, xong thì đổi thành false
+    private static final boolean DEBUG = true;
+
     private static volatile boolean enabled = true;
 
     private static int swap(int c) {
@@ -42,21 +48,32 @@ public class Hook implements IXposedHookLoadPackage {
         XposedBridge.log("TkColor: activity " + n + " enabled=" + enabled);
     }
 
-    // hook method có tham số int đầu tiên là màu
-    private static void hookIntArg(Class<?> cls, String method, Class<?>... extra) {
+    private static ColorMatrixColorFilter hueFilter(float deg) {
+        float a = (float) Math.toRadians(deg);
+        float c = (float) Math.cos(a), s = (float) Math.sin(a);
+        float lr = 0.213f, lg = 0.715f, lb = 0.072f;
+        float[] m = {
+            lr + c * (1 - lr) - s * lr, lg - c * lg - s * lg, lb - c * lb + s * (1 - lb), 0, 0,
+            lr - c * lr + s * 0.143f, lg + c * (1 - lg) + s * 0.140f, lb - c * lb - s * 0.283f, 0, 0,
+            lr - c * lr - s * (1 - lr), lg - c * lg + s * lg, lb + c * (1 - lb) + s * lb, 0, 0,
+            0, 0, 0, 1, 0
+        };
+        return new ColorMatrixColorFilter(m);
+    }
+
+    // hook method có tham số đầu tiên là màu (int)
+    private static void hookIntArg(Class<?> cls, String method) {
         try {
-            Object[] params = new Object[1 + extra.length + 1];
-            params[0] = int.class;
-            System.arraycopy(extra, 0, params, 1, extra.length);
-            params[params.length - 1] = new XC_MethodHook() {
+            XposedHelpers.findAndHookMethod(cls, method, int.class,
+                    new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam p) {
                     p.args[0] = swap((Integer) p.args[0]);
                 }
-            };
-            XposedHelpers.findAndHookMethod(cls, method, params);
+            });
         } catch (Throwable t) {
-            XposedBridge.log("TkColor: " + cls.getSimpleName() + "." + method + " fail: " + t);
+            XposedBridge.log("TkColor: " + cls.getSimpleName() + "."
+                    + method + " fail: " + t);
         }
     }
 
@@ -158,6 +175,73 @@ public class Hook implements IXposedHookLoadPackage {
             XposedBridge.log("TkColor: activity hook fail: " + t);
         }
 
+        // 5. Tim: xoay hue cho ImageView dùng resource tên digg/like/heart
+        try {
+            final ColorMatrixColorFilter hueF = hueFilter(HUE - 350f);
+            XposedHelpers.findAndHookMethod(ImageView.class,
+                    "setImageResource", int.class, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam p) {
+                    try {
+                        ImageView v = (ImageView) p.thisObject;
+                        int id = (Integer) p.args[0];
+                        String n = v.getResources().getResourceEntryName(id)
+                                .toLowerCase();
+                        if (n.contains("digg") || n.contains("like")
+                                || n.contains("heart")) {
+                            XposedBridge.log("TkColor: res " + n);
+                            v.setColorFilter(hueF);
+                        }
+                    } catch (Throwable ignored) { }
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("TkColor: heart fail: " + t);
+        }
+
+        // 6. DEBUG: xem nút tim là view gì
+        if (DEBUG) {
+            try {
+                XposedHelpers.findAndHookMethod(View.class, "performClick",
+                        new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam p) {
+                        try {
+                            View v = (View) p.thisObject;
+                            String id = "none";
+                            try {
+                                if (v.getId() != -1)
+                                    id = v.getResources()
+                                            .getResourceEntryName(v.getId());
+                            } catch (Throwable ignored) { }
+                            StringBuilder sb = new StringBuilder();
+                            Object o = v;
+                            for (int i = 0; i < 4 && o instanceof View; i++) {
+                                sb.append(o.getClass().getName()).append(" < ");
+                                o = ((View) o).getParent();
+                            }
+                            XposedBridge.log("TkColor: click id=" + id
+                                    + " chain=" + sb);
+                        } catch (Throwable ignored) { }
+                    }
+                });
+                XposedHelpers.findAndHookMethod(ImageView.class,
+                        "setImageDrawable", Drawable.class,
+                        new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam p) {
+                        if (p.args[0] != null)
+                            XposedBridge.log("TkColor: img "
+                                    + p.thisObject.getClass().getName()
+                                    + " drawable="
+                                    + p.args[0].getClass().getName());
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("TkColor: debug fail: " + t);
+            }
+        }
+
         XposedBridge.log("TkColor: hooked " + lp.packageName);
     }
-}
+                            }
